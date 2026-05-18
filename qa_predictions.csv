@@ -1,0 +1,5 @@
+qid,question,context_excerpt,gold_answer,predicted_answer,em,f1
+tech_01,Who acquired GitHub in 2018?,Microsoft completed its acquisition of GitHub for $7.5 billion in late 2018...,Microsoft,Microsoft,1,1.0
+ent_02,When was the movie released?,"The highly anticipated sci-fi sequel hit theaters worldwide on Friday, Octob",Friday,last Friday,0,0.5
+tech_03,What is the new feature called?,Apple announced a new safety feature called Crash Detection for the latest iPh,Crash Detection,Crash Detection,1,1.0
+ent_04,Who directed the new Batman movie?,"The upcoming film is helmed by director Matt Reeves, who previously directed t",Matt Reeves,director Matt Reeves,0,0.66
