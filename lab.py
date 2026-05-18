@@ -8,8 +8,10 @@ import json
 import os
 import re
 import string
+from collections import Counter
 
 import pandas as pd
+from transformers import pipeline
 
 
 # -- Helpers (provided — do NOT modify) --------------------------------------
@@ -54,15 +56,24 @@ def load_examples(data_path: str) -> pd.DataFrame:
 
 def normalize_answer(s: str) -> str:
     """SQuAD-style normalization (see drill / reading)."""
-    # TODO: apply the four-step SQuAD normalization (lowercase, strip articles, strip punctuation, collapse whitespace);
-    #       remember the article strip needs word-boundary regex
-    raise NotImplementedError("normalize_answer not implemented")
+    # 1. Lowercase
+    s = str(s).lower()
+    
+    # 2. Strip standalone articles (a, an, the) using word-boundary regex
+    s = re.sub(r"\b(a|an|the)\b", " ", s)
+    
+    # 3. Strip all punctuation characters
+    s = re.sub(f"[{re.escape(string.punctuation)}]", " ", s)
+    
+    # 4. Collapse whitespace and strip leading/trailing spaces
+    s = " ".join(s.split())
+    
+    return s
 
 
 def exact_match(pred: str, gold: str) -> int:
     """Return 1 if normalized prediction equals normalized gold."""
-    # TODO: compare normalized values, return int
-    raise NotImplementedError("exact_match not implemented")
+    return 1 if normalize_answer(pred) == normalize_answer(gold) else 0
 
 
 def token_f1(pred: str, gold: str) -> float:
@@ -74,16 +85,38 @@ def token_f1(pred: str, gold: str) -> float:
       - one empty -> 0.0
     Returns float in [0.0, 1.0]; never NaN.
     """
-    # TODO: normalize, split, handle empty, compute multiset overlap, return F1
-    raise NotImplementedError("token_f1 not implemented")
+    norm_pred = normalize_answer(pred)
+    norm_gold = normalize_answer(gold)
+    
+    # Handle empty cases explicitly to avoid division by zero (NaN)
+    if not norm_pred and not norm_gold:
+        return 1.0
+    if not norm_pred or not norm_gold:
+        return 0.0
+        
+    pred_tokens = norm_pred.split()
+    gold_tokens = norm_gold.split()
+    
+    # Compute multiset overlap via Counter collections
+    pred_counter = Counter(pred_tokens)
+    gold_counter = Counter(gold_tokens)
+    overlap = sum((pred_counter & gold_counter).values())
+    
+    # If no tokens overlap, F1 is explicitly 0.0
+    if overlap == 0:
+        return 0.0
+        
+    precision = overlap / len(pred_tokens)
+    recall = overlap / len(gold_tokens)
+    
+    return 2 * (precision * recall) / (precision + recall)
 
 
 # -- Task 2: Build the QA pipeline -------------------------------------------
 
 def build_qa_pipeline(model_name: str):
     """Construct a Hugging Face question-answering pipeline."""
-    # TODO: build a question-answering pipeline using the given model name (same as the drill)
-    raise NotImplementedError("build_qa_pipeline not implemented")
+    return pipeline("question-answering", model=model_name)
 
 
 # -- Task 3: Predict one answer ---------------------------------------------
@@ -94,8 +127,8 @@ def predict_one(qa, question: str, context: str) -> str:
 
     Returns the answer STRING only (not the full pipeline output dict).
     """
-    # TODO: invoke the pipeline on the (question, context) pair and return only the predicted answer string
-    raise NotImplementedError("predict_one not implemented")
+    result = qa(question=question, context=context)
+    return result.get("answer", "")
 
 
 # -- Task 4: Evaluate over the dataset ---------------------------------------
@@ -116,9 +149,50 @@ def evaluate_qa(qa, examples: pd.DataFrame) -> dict:
         }
     context_excerpt is the first 80 chars of the context (CSV-friendly).
     """
-    # TODO: iterate over examples, call predict_one, compute em + f1
-    # TODO: build predictions list, aggregate em/f1, return
-    raise NotImplementedError("evaluate_qa not implemented")
+    predictions_list = []
+    total_em = 0
+    total_f1 = 0.0
+    n = len(examples)
+    
+    for _, row in examples.iterrows():
+        qid = str(row["qid"])
+        question = str(row["question"])
+        context = str(row["context"])
+        gold_answer = str(row["gold_answer"])
+        
+        # Call Task 3 thin wrapper to isolate answer string
+        predicted_answer = predict_one(qa, question, context)
+        
+        # Calculate metric evaluation scores
+        em_score = exact_match(predicted_answer, gold_answer)
+        f1_score = token_f1(predicted_answer, gold_answer)
+        
+        total_em += em_score
+        total_f1 += f1_score
+        
+        # Generate the safe 80 character excerpt
+        context_excerpt = context[:80]
+        
+        predictions_list.append({
+            "qid": qid,
+            "question": question,
+            "context_excerpt": context_excerpt,
+            "gold_answer": gold_answer,
+            "predicted_answer": predicted_answer,
+            "em": em_score,
+            "f1": f1_score
+        })
+        
+    # Calculate macro aggregate means across the subset slice
+    mean_em = total_em / n if n > 0 else 0.0
+    mean_f1 = total_f1 / n if n > 0 else 0.0
+    
+    return {
+        "em": mean_em,
+        "f1": mean_f1,
+        "n": n,
+        "predictions": predictions_list
+    }
 
 
 # -- Task 5: Orchestrate -----------------------------------------------------
